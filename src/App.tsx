@@ -10,7 +10,7 @@ import { HistoryPage } from "@/pages/HistoryPage";
 import { ProfilePage } from "@/pages/ProfilePage";
 import { PlayHostPage } from "@/pages/PlayHostPage";
 import { PlayJoinPage } from "@/pages/PlayJoinPage";
-import { PlayGamePage } from "@/pages/PlayGamePage";
+import { PlayGamePageWithErrorBoundary as PlayGamePage } from "@/pages/PlayGamePage";
 
 function App() {
   return (
