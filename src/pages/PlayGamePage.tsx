@@ -3,7 +3,7 @@
 // Main game orchestrator. Detects host vs player, subscribes to Realtime,
 // manages the game state machine, and renders the appropriate view per phase.
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, Component, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuizStore } from "@/store/quizStore";
 import { useGameStore } from "@/store/gameStore";
@@ -122,34 +122,48 @@ export function PlayGamePage() {
         setGamePlayers(players);
 
         // Subscribe to Realtime
+        // NOTE: The host sets its own state directly via revealQuestion().
+        // These broadcast handlers are mainly for PLAYERS.
+        // We guard every handler with isHost checks to prevent the host
+        // from accidentally processing its own broadcasts (belt-and-suspenders
+        // with self:false on the channel config).
         gameRealtime.subscribe(sessionId!, {
           onGameStarted: () => {
+            // Host doesn't need this — it already called revealQuestion()
+            if (isHost) return;
             setPhase("question");
           },
           onQuestionRevealed: (data: QuestionRevealedPayload) => {
+            // Host sets its own state in revealQuestion() — SKIP entirely
+            if (isHost) {
+              console.log("[Host] Ignoring own question-revealed broadcast");
+              return;
+            }
             resetForNextQuestion();
             setCurrentQuestionIndex(data.questionIndex);
             setTotalQuestions(data.totalQuestions);
             setCountdownEndTimestamp(data.countdownEndTimestamp);
             questionStartRef.current = Date.now();
 
-            // For players: set the question data from the broadcast
-            if (!isHost) {
-              setCurrentQuestion({
-                questionText: data.question.questionText,
-                options: data.question.options,
-                topic: data.question.topic,
-                difficulty: data.question.difficulty as any,
-                correctAnswer: "", // Don't reveal to players
-                explanation: "",
-              });
-            }
+            setCurrentQuestion({
+              questionText: data.question.questionText,
+              options: data.question.options,
+              topic: data.question.topic,
+              difficulty: data.question.difficulty as any,
+              correctAnswer: "", // Don't reveal to players
+              explanation: "",
+            });
             setPhase("question");
           },
           onPlayerAnswered: (_data: PlayerAnsweredPayload) => {
             incrementAnsweredCount();
           },
           onResultsShown: (data: QuestionResultsPayload) => {
+            // Host sets its own results state in showResults() — SKIP
+            if (isHost) {
+              console.log("[Host] Ignoring own results-shown broadcast");
+              return;
+            }
             setCorrectAnswer(data.correctAnswer);
             setExplanation(data.explanation);
             setQuestionResults(data.playerResults);
@@ -157,6 +171,11 @@ export function PlayGamePage() {
             setPhase("results");
           },
           onGameFinished: (data: GameFinishedPayload) => {
+            // Host sets its own finished state — SKIP
+            if (isHost) {
+              console.log("[Host] Ignoring own game-finished broadcast");
+              return;
+            }
             setFinalLeaderboard(data.finalLeaderboard);
             setPhase("finished");
           },
@@ -195,16 +214,25 @@ export function PlayGamePage() {
       const quiz = generatedQuizRef.current;
       const session = gameSessionRef.current;
 
+      console.log("[revealQuestion] index:", index, {
+        hasQuiz: !!quiz,
+        hasSession: !!session,
+        allQLen: allQuestions.current.length,
+        timePerQ: session?.timePerQuestionSeconds,
+      });
+
       if (!quiz || !session) {
-        console.error("revealQuestion: missing quiz or session", { quiz: !!quiz, session: !!session });
+        console.error("[revealQuestion] ABORT: missing quiz or session");
         return;
       }
 
       const q = allQuestions.current[index];
       if (!q) {
-        console.error("revealQuestion: no question at index", index);
+        console.error("[revealQuestion] ABORT: no question at index", index);
         return;
       }
+
+      console.log("[revealQuestion] question:", q.questionText?.slice(0, 60));
 
       const timeLimit = session.timePerQuestionSeconds;
       const countdownEnd = Date.now() + timeLimit * 1000;
@@ -216,6 +244,11 @@ export function PlayGamePage() {
         questionIndex: index,
         totalQuestions: allQuestions.current.length,
         countdownEndTimestamp: countdownEnd,
+      });
+
+      console.log("[revealQuestion] state set! phase should now be 'question'. Store:", {
+        phase: useGameStore.getState().phase,
+        hasCurrentQuestion: !!useGameStore.getState().currentQuestion,
       });
 
       // ✅ Async calls in background — failures don't affect host UI
@@ -364,6 +397,17 @@ export function PlayGamePage() {
 
   // ─── Render based on phase ───
 
+  // Debug: log every render with current state
+  console.log("[PlayGamePage render]", {
+    phase,
+    isHost,
+    hasGameSession: !!gameSession,
+    hasCurrentQuestion: !!useGameStore.getState().currentQuestion,
+    currentQuestionIndex,
+    allQuestionsCount: allQuestions.current.length,
+    hasGeneratedQuiz: !!generatedQuiz,
+  });
+
   if (!gameSession) {
     return (
       <div className="mx-auto max-w-md pt-20 text-center">
@@ -395,6 +439,17 @@ export function PlayGamePage() {
         );
       case "finished":
         return <HostFinalResults />;
+      default:
+        return (
+          <div className="mx-auto max-w-md pt-20 text-center">
+            <div className="rounded-2xl bg-red-500/10 border border-red-500/30 p-6">
+              <h2 className="mb-2 text-lg font-bold text-red-600">
+                Unknown phase: "{phase}"
+              </h2>
+              <p className="text-sm text-red-600/80">isHost: {String(isHost)}</p>
+            </div>
+          </div>
+        );
     }
   }
 
@@ -409,7 +464,71 @@ export function PlayGamePage() {
       return <PlayerResultsView />;
     case "finished":
       return <PlayerFinalScore />;
+    default:
+      return (
+        <div className="mx-auto max-w-md pt-20 text-center">
+          <p className="text-sm text-muted-foreground">
+            Unknown phase: "{phase}" (player view)
+          </p>
+        </div>
+      );
+  }
+}
+
+// ─── Error Boundary ───
+// Catches render errors so the page shows an error message instead of going blank.
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class GameErrorBoundary extends Component<
+  { children: ReactNode },
+  ErrorBoundaryState
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
   }
 
-  return null;
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: { componentStack?: string | null }) {
+    console.error("[GameErrorBoundary]", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="mx-auto max-w-md pt-20 text-center">
+          <div className="rounded-2xl bg-red-500/10 border border-red-500/30 p-6">
+            <h2 className="mb-2 text-lg font-bold text-red-600">
+              Game Error
+            </h2>
+            <p className="mb-4 text-sm text-red-600/80">
+              {this.state.error?.message || "Unknown error"}
+            </p>
+            <button
+              className="text-sm font-medium text-primary hover:underline"
+              onClick={() => window.location.reload()}
+            >
+              Reload page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** Wrapped export with error boundary */
+export function PlayGamePageWithErrorBoundary() {
+  return (
+    <GameErrorBoundary>
+      <PlayGamePage />
+    </GameErrorBoundary>
+  );
 }
