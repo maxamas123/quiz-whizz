@@ -76,6 +76,16 @@ export function PlayGamePage() {
   // Ref for auto-timer after question ends (host reveals results)
   const timerEndRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── Use refs for values accessed in callbacks to avoid stale closures ───
+  const gameSessionRef = useRef(gameSession);
+  gameSessionRef.current = gameSession;
+
+  const generatedQuizRef = useRef(generatedQuiz);
+  generatedQuizRef.current = generatedQuiz;
+
+  const currentQuestionIndexRef = useRef(currentQuestionIndex);
+  currentQuestionIndexRef.current = currentQuestionIndex;
+
   // ─── Flatten quiz questions for indexing ───
   const allQuestions = useRef<GeneratedQuestion[]>([]);
 
@@ -100,9 +110,10 @@ export function PlayGamePage() {
     async function init() {
       try {
         // If we don't already have the session in store, fetch it
-        if (!gameSession) {
+        if (!gameSessionRef.current) {
           const session = await getGameSession(sessionId!);
           setGameSession(session);
+          gameSessionRef.current = session;
         }
 
         // Load existing players
@@ -176,30 +187,28 @@ export function PlayGamePage() {
     };
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Host: Start Game ───
-  const handleStartGame = useCallback(async () => {
-    if (!sessionId || !generatedQuiz) return;
-
-    await apiStartGame(sessionId);
-    await gameRealtime.broadcastGameStarted();
-
-    // Reveal first question
-    revealQuestion(0);
-  }, [sessionId, generatedQuiz]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── Host: Reveal a question ───
+  // ─── Host: Reveal a question (uses refs to avoid stale closures) ───
   const revealQuestion = useCallback(
     async (index: number) => {
-      if (!generatedQuiz || !gameSession) return;
+      const quiz = generatedQuizRef.current;
+      const session = gameSessionRef.current;
+
+      if (!quiz || !session) {
+        console.error("revealQuestion: missing quiz or session", { quiz: !!quiz, session: !!session });
+        return;
+      }
 
       const q = allQuestions.current[index];
-      if (!q) return;
+      if (!q) {
+        console.error("revealQuestion: no question at index", index);
+        return;
+      }
 
       resetForNextQuestion();
       setCurrentQuestionIndex(index);
       setCurrentQuestion(q);
 
-      const timeLimit = gameSession.timePerQuestionSeconds;
+      const timeLimit = session.timePerQuestionSeconds;
       const countdownEnd = Date.now() + timeLimit * 1000;
       setCountdownEndTimestamp(countdownEnd);
       questionStartRef.current = Date.now();
@@ -227,8 +236,19 @@ export function PlayGamePage() {
         timeLimit * 1000 + 1500 // small buffer after timer
       );
     },
-    [generatedQuiz, gameSession, sessionId] // eslint-disable-line react-hooks/exhaustive-deps
+    [sessionId] // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // ─── Host: Start Game ───
+  const handleStartGame = useCallback(async () => {
+    if (!sessionId || !generatedQuizRef.current) return;
+
+    await apiStartGame(sessionId);
+    await gameRealtime.broadcastGameStarted();
+
+    // Reveal first question
+    revealQuestion(0);
+  }, [sessionId, revealQuestion]);
 
   // ─── Host: Show results for a question ───
   const showResults = useCallback(
@@ -268,7 +288,7 @@ export function PlayGamePage() {
       timerEndRef.current = null;
     }
 
-    const nextIndex = currentQuestionIndex + 1;
+    const nextIndex = currentQuestionIndexRef.current + 1;
 
     if (nextIndex >= allQuestions.current.length) {
       // Game over
@@ -282,52 +302,41 @@ export function PlayGamePage() {
     } else {
       revealQuestion(nextIndex);
     }
-  }, [currentQuestionIndex, sessionId, revealQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, revealQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Player: Submit answer ───
   const handlePlayerAnswer = useCallback(
     async (letter: string) => {
-      if (!gameSession || !currentPlayer || !sessionId) return;
+      const session = gameSessionRef.current;
+      if (!session || !currentPlayer || !sessionId) return;
 
       selectAnswer(letter);
       markAnswered();
 
       const responseTimeMs = Date.now() - questionStartRef.current;
 
-      // If player doesn't have the correct answer, compute from broadcast
-      // Actually the correct answer isn't sent to players — host computes correctness
-      // For now, we submit and let the host DB determine correctness
-      // We need to check against what the host stored. Let's use a simple approach:
-      // The player doesn't know if they're correct yet — we'll mark as unknown
-      // and let the host compute when showing results.
-
-      // Actually, we need to store the response. The host will look up all responses.
-      // For is_correct, we'll use false as placeholder — the host recalculates
-      // The correct answer IS in the quiz data stored in DB, so we can look it up server-side
-      // For simplicity, we'll include a lightweight server check
-
       try {
         await submitPlayerResponse(
           sessionId,
           currentPlayer.id,
-          currentQuestionIndex,
+          currentQuestionIndexRef.current,
           letter,
           false, // Will be validated server-side or by host
           responseTimeMs,
-          gameSession.timePerQuestionSeconds * 1000
+          session.timePerQuestionSeconds * 1000
         );
 
         // Broadcast that this player answered (no details, just count)
         await gameRealtime.broadcastPlayerAnswered({
           playerId: currentPlayer.id,
           displayName: currentPlayer.displayName,
-          questionIndex: currentQuestionIndex,
+          questionIndex: currentQuestionIndexRef.current,
         });
       } catch (err) {
         console.error("Failed to submit answer:", err);
       }
     },
-    [gameSession, currentPlayer, sessionId, currentQuestionIndex, selectAnswer, markAnswered]
+    [currentPlayer, sessionId, selectAnswer, markAnswered]
   );
 
   // ─── Render based on phase ───
