@@ -25,7 +25,24 @@ export function HostGameView() {
   const gamePlayers = useGameStore((s) => s.gamePlayers);
   const timeRemaining = useGameStore((s) => s.timeRemaining);
 
-  if (!currentQuestion || !gameSession) return null;
+  // Debug: never return blank — show what's missing so we can diagnose
+  if (!currentQuestion || !gameSession) {
+    return (
+      <div className="mx-auto max-w-md pt-20 text-center">
+        <div className="rounded-2xl bg-amber-500/10 border border-amber-500/30 p-6">
+          <h2 className="mb-2 text-lg font-bold text-amber-600">
+            Waiting for question data...
+          </h2>
+          <p className="text-sm text-amber-600/80">
+            gameSession: {gameSession ? "OK" : "MISSING"} |
+            currentQuestion: {currentQuestion ? "OK" : "MISSING"} |
+            questionIndex: {currentQuestionIndex} |
+            totalQuestions: {totalQuestions}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const timeLimit = gameSession.timePerQuestionSeconds;
   const totalPlayers = gamePlayers.length;
