@@ -74,6 +74,14 @@ interface GameStore {
   /** Reset question-level state for the next question */
   resetForNextQuestion: () => void;
 
+  /** Atomically set all state for a new question + switch to "question" phase */
+  revealQuestionState: (opts: {
+    question: GeneratedQuestion;
+    questionIndex: number;
+    totalQuestions: number;
+    countdownEndTimestamp: number;
+  }) => void;
+
   /** Clear everything */
   clearGameState: () => void;
 }
@@ -151,6 +159,25 @@ export const useGameStore = create<GameStore>((set) => ({
       explanation: null,
       countdownEndTimestamp: null,
       timeRemaining: 0,
+    }),
+
+  revealQuestionState: (opts) =>
+    set({
+      // Reset previous question state
+      selectedAnswer: null,
+      isAnswered: false,
+      answeredCount: 0,
+      questionResults: [],
+      correctAnswer: null,
+      explanation: null,
+      // Set new question state
+      currentQuestion: opts.question,
+      currentQuestionIndex: opts.questionIndex,
+      totalQuestions: opts.totalQuestions,
+      countdownEndTimestamp: opts.countdownEndTimestamp,
+      timeRemaining: Math.ceil((opts.countdownEndTimestamp - Date.now()) / 1000),
+      // Switch phase — this triggers the HostGameView render
+      phase: "question",
     }),
 
   clearGameState: () =>
