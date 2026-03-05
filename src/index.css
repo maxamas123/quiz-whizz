@@ -1,0 +1,166 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Quiz Whizz Theme ──
+   Warm pinkish-lavender background inspired by studymate.io.
+   Rich purple primary, soft shadows, generous rounding. */
+:root {
+  --radius: 0.875rem;
+  /* Warm lavender-tinted off-white background */
+  --background: oklch(0.97 0.008 300);
+  --foreground: oklch(0.18 0.02 280);
+  /* Pure white cards */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 280);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 280);
+  /* Warm purple primary — matches studymate accent */
+  --primary: oklch(0.48 0.2 280);
+  --primary-foreground: oklch(0.99 0 0);
+  /* Soft lavender secondary */
+  --secondary: oklch(0.95 0.012 290);
+  --secondary-foreground: oklch(0.3 0.03 280);
+  /* Muted tones */
+  --muted: oklch(0.94 0.01 295);
+  --muted-foreground: oklch(0.52 0.015 280);
+  /* Accent */
+  --accent: oklch(0.93 0.015 290);
+  --accent-foreground: oklch(0.3 0.03 280);
+  /* Destructive */
+  --destructive: oklch(0.577 0.245 27.325);
+  /* Borders — very subtle, warm */
+  --border: oklch(0.92 0.008 290);
+  --input: oklch(0.92 0.008 290);
+  --ring: oklch(0.55 0.18 280);
+  /* Charts */
+  --chart-1: oklch(0.55 0.20 280);
+  --chart-2: oklch(0.60 0.15 185);
+  --chart-3: oklch(0.50 0.10 145);
+  --chart-4: oklch(0.70 0.16 85);
+  --chart-5: oklch(0.65 0.20 40);
+  /* Sidebar */
+  --sidebar: oklch(0.97 0.008 300);
+  --sidebar-foreground: oklch(0.18 0.02 280);
+  --sidebar-primary: oklch(0.48 0.2 280);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.93 0.015 290);
+  --sidebar-accent-foreground: oklch(0.3 0.03 280);
+  --sidebar-border: oklch(0.92 0.008 290);
+  --sidebar-ring: oklch(0.55 0.18 280);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* ── Print styles ── */
+@media print {
+  body {
+    background: white !important;
+    font-size: 10pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Compact spacing for printed questions */
+  .print-question-card {
+    padding: 8px 10px !important;
+    margin-bottom: 4px !important;
+    border-radius: 6px !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  /* Hide sections when printing answers-only */
+  .print-hide-for-answers {
+    display: none !important;
+  }
+
+  /* Upside-down answers for the answers-only print mode */
+  .print-upside-down {
+    transform: rotate(180deg);
+    font-size: 10pt;
+  }
+
+  .print-answers-only {
+    page-break-before: auto;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+  .print\:shadow-none {
+    box-shadow: none !important;
+  }
+  .print\:break-inside-avoid {
+    break-inside: avoid;
+  }
+  .print\:border {
+    border-width: 1px;
+  }
+  .print\:border-gray-200 {
+    border-color: #e5e7eb;
+  }
+  .print\:bg-gray-100 {
+    background-color: #f3f4f6;
+  }
+  .print\:text-gray-700 {
+    color: #374151;
+  }
+
+  /* Reduce margins for tighter printing */
+  @page {
+    margin: 0.5in;
+  }
+}
