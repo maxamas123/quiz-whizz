@@ -63,7 +63,8 @@ export function QuizWizard() {
   } = useQuizStore();
 
   const methods = useForm<QuizConfigFormValues>({
-    resolver: zodResolver(quizConfigSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(quizConfigSchema) as any,
     defaultValues: DEFAULT_VALUES,
     mode: "onChange",
   });
@@ -188,7 +189,7 @@ export function QuizWizard() {
 
       <FormProvider {...methods}>
         <form
-          onSubmit={handleSubmit(onSubmit)}
+          onSubmit={handleSubmit(onSubmit as any)}
           className="mx-auto w-full max-w-3xl space-y-5"
         >
           {/* ── Header ── */}
