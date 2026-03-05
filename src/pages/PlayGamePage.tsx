@@ -58,6 +58,7 @@ export function PlayGamePage() {
   const setCurrentQuestionIndex = useGameStore((s) => s.setCurrentQuestionIndex);
   const setTotalQuestions = useGameStore((s) => s.setTotalQuestions);
   const setCountdownEndTimestamp = useGameStore((s) => s.setCountdownEndTimestamp);
+  const revealQuestionState = useGameStore((s) => s.revealQuestionState);
   const setCorrectAnswer = useGameStore((s) => s.setCorrectAnswer);
   const setExplanation = useGameStore((s) => s.setExplanation);
   const setQuestionResults = useGameStore((s) => s.setQuestionResults);
@@ -187,9 +188,10 @@ export function PlayGamePage() {
     };
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Host: Reveal a question (uses refs to avoid stale closures) ───
+  // ─── Host: Reveal a question ───
+  // ALL state is set atomically FIRST, then async calls happen in background.
   const revealQuestion = useCallback(
-    async (index: number) => {
+    (index: number) => {
       const quiz = generatedQuizRef.current;
       const session = gameSessionRef.current;
 
@@ -204,50 +206,71 @@ export function PlayGamePage() {
         return;
       }
 
-      resetForNextQuestion();
-      setCurrentQuestionIndex(index);
-      setCurrentQuestion(q);
-
       const timeLimit = session.timePerQuestionSeconds;
       const countdownEnd = Date.now() + timeLimit * 1000;
-      setCountdownEndTimestamp(countdownEnd);
       questionStartRef.current = Date.now();
 
-      await advanceQuestion(sessionId!, index);
-
-      // Broadcast to all players (without correct answer!)
-      await gameRealtime.broadcastQuestionRevealed({
+      // ✅ Set ALL state atomically in one store update — UI renders immediately
+      revealQuestionState({
+        question: q,
         questionIndex: index,
-        question: {
-          questionText: q.questionText,
-          options: q.options,
-          topic: q.topic,
-          difficulty: q.difficulty,
-        },
-        countdownEndTimestamp: countdownEnd,
         totalQuestions: allQuestions.current.length,
+        countdownEndTimestamp: countdownEnd,
       });
 
-      setPhase("question");
+      // ✅ Async calls in background — failures don't affect host UI
+      (async () => {
+        try {
+          await advanceQuestion(sessionId!, index);
+        } catch (err) {
+          console.error("advanceQuestion failed (non-fatal):", err);
+        }
+        try {
+          await gameRealtime.broadcastQuestionRevealed({
+            questionIndex: index,
+            question: {
+              questionText: q.questionText,
+              options: q.options,
+              topic: q.topic,
+              difficulty: q.difficulty,
+            },
+            countdownEndTimestamp: countdownEnd,
+            totalQuestions: allQuestions.current.length,
+          });
+        } catch (err) {
+          console.error("broadcastQuestionRevealed failed (non-fatal):", err);
+        }
+      })();
 
       // Auto-show results when timer ends
       timerEndRef.current = setTimeout(
         () => showResults(index),
-        timeLimit * 1000 + 1500 // small buffer after timer
+        timeLimit * 1000 + 1500
       );
     },
     [sessionId] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // ─── Host: Start Game ───
-  const handleStartGame = useCallback(async () => {
+  const handleStartGame = useCallback(() => {
     if (!sessionId || !generatedQuizRef.current) return;
 
-    await apiStartGame(sessionId);
-    await gameRealtime.broadcastGameStarted();
-
-    // Reveal first question
+    // Reveal first question immediately (sets state synchronously)
     revealQuestion(0);
+
+    // Async calls in background — failures don't block UI
+    (async () => {
+      try {
+        await apiStartGame(sessionId);
+      } catch (err) {
+        console.error("apiStartGame failed (non-fatal):", err);
+      }
+      try {
+        await gameRealtime.broadcastGameStarted();
+      } catch (err) {
+        console.error("broadcastGameStarted failed (non-fatal):", err);
+      }
+    })();
   }, [sessionId, revealQuestion]);
 
   // ─── Host: Show results for a question ───
