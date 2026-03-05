@@ -36,7 +36,7 @@ export class GameRealtimeManager {
     this.sessionId = sessionId;
     this.channel = supabase.channel(`game:${sessionId}`, {
       config: {
-        broadcast: { self: true },
+        broadcast: { self: false },
         presence: { key: sessionId },
       },
     });
